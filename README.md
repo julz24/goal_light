@@ -41,6 +41,13 @@ Polling local via HTTP — aucune dépendance cloud.
 Boîtier et diffuseur imprimables en 3D — logo des Canadiens de Montréal.  
 Compatible avec le montage LED WS2812B et l'ESP32-C3 Super Mini.
 
+## 📱 Application Android
+
+👉 **[Télécharger l'APK](https://github.com/julz24/goal_light/releases/latest/download/canadiens_goal_light.apk)**
+
+Contrôle ta Goal Light depuis ton téléphone Android.  
+> ⚠️ Activer *Sources inconnues* dans les paramètres Android pour installer l'APK.
+
 ---
 
 ## Installation manuelle
