@@ -70,7 +70,7 @@ Contrôle ta Goal Light depuis ton téléphone Android.
 
 1. Aller dans **Paramètres → Appareils et services → Ajouter une intégration**
 2. Chercher **Goal Light**
-3. Entrer l'adresse IP de l'appareil (ex. `192.168.2.x`)
+3. Entrer l'adresse IP de l'appareil (ex. `192.168.1.x`)
 4. Un test de connexion est effectué automatiquement — si ça passe, c'est configuré !
 
 --- 
