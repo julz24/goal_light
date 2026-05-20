@@ -3,8 +3,9 @@
   "name": "Goal Light",
   "version": "1.0.0",
   "config_flow": true,
-  "documentation": "https://github.com/youruser/goal_light",
+  "documentation": "https://github.com/julz24/goal_light",
+  "issue_tracker": "https://github.com/julz24/goal_light/issues",
   "requirements": [],
   "iot_class": "local_polling",
-  "codeowners": []
+  "codeowners": ["@julz24"]
 }
