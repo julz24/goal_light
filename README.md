@@ -32,6 +32,8 @@ Polling local via HTTP — aucune dépendance cloud.
 
 [![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=julz24&repository=goal_light&category=integration)
 
+[![Flash Firmware](https://img.shields.io/badge/Flash-ESP32--C3-blue?logo=espressif)](https://julz24.github.io/goal_light/flash.html)
+
 ---
 
 ## Installation manuelle
