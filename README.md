@@ -30,6 +30,8 @@ Polling local via HTTP — aucune dépendance cloud.
 5. Cliquer **Ajouter**, puis chercher **Goal Light** dans HACS et installer
 6. **Redémarrer Home Assistant**
 
+7. [![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=julz24&repository=goal_light&category=integration)
+
 ---
 
 ## Installation manuelle
