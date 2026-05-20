@@ -1,0 +1,49 @@
+name: Build Firmware
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ESP32-C3 Firmware
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ hashFiles('firmware/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: |
+          cd firmware
+          pio run -e esp32-c3-supermini
+
+      - name: Rename .bin
+        run: |
+          cp firmware/.pio/build/esp32-c3-supermini/firmware.bin \
+             canadiens_goal_light_c3.bin
+
+      - name: Upload artifact (pour test sans release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: canadiens_goal_light_c3.bin
+
+      - name: Attach .bin to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: canadiens_goal_light_c3.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
