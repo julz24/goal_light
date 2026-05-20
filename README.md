@@ -110,11 +110,8 @@ L'appareil doit retourner un JSON avec les champs suivants :
 
 ## Effets disponibles
 
-- `goal` — Animation but !
-- `rainbow` — Arc-en-ciel
-- `strobe` — Stroboscope
-- `solid` — Couleur fixe
-- `pulse` — Pulsation
+- `goal` — Animation but (Flash Rouge)
+- `solid` — Couleur fixe (Bleu, Blanc et Rouge)
 
 ---
 
