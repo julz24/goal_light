@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Goal Light",
+        "description": "Entrez l'adresse IP de votre Goal Light. Un test de connexion sera effectué automatiquement.",
+        "data": {
+          "ip": "Adresse IP"
+        },
+        "data_description": {
+          "ip": "Exemple : 192.168.2.x"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de se connecter à l'appareil. Vérifiez l'IP et que l'appareil est en ligne."
+    },
+    "abort": {
+      "already_configured": "Cet appareil est déjà configuré."
+    }
+  }
+}

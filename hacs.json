@@ -1,0 +1,6 @@
+{
+  "name": "Goal Light",
+  "content_in_root": false,
+  "homeassistant": "2024.1.0",
+  "filename": "goal_light.zip"
+}

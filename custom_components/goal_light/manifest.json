@@ -1,0 +1,10 @@
+{
+  "domain": "goal_light",
+  "name": "Goal Light",
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/youruser/goal_light",
+  "requirements": [],
+  "iot_class": "local_polling",
+  "codeowners": []
+}
