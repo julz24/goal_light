@@ -47,6 +47,14 @@ Compatible avec le montage LED WS2812B et l'ESP32-C3 Super Mini.
 
 Contrôle ta Goal Light depuis ton téléphone Android.  
 > ⚠️ Activer *Sources inconnues* dans les paramètres Android pour installer l'APK.
+>
+> ## 🛒 Liste de matériel
+
+| Composant | Lien |
+|-----------|------|
+| ESP32-C3 Super Mini (USB-C) | [AliExpress](https://www.aliexpress.com/item/1005008956664945.html) |
+| LEDs WS2812B DC5V 4M 60 LEDs/m IP30 | [AliExpress](https://www.aliexpress.com/item/2036819167.html) |
+> 💡 Les liens AliExpress peuvent expirer — chercher les mêmes composants si le lien ne fonctionne plus.
 
 ---
 
@@ -65,7 +73,7 @@ Contrôle ta Goal Light depuis ton téléphone Android.
 3. Entrer l'adresse IP de l'appareil (ex. `192.168.2.x`)
 4. Un test de connexion est effectué automatiquement — si ça passe, c'est configuré !
 
----
+--- 
 
 ## Format JSON attendu (`/state`)
 
