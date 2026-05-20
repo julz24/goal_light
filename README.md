@@ -21,7 +21,7 @@ Polling local via HTTP — aucune dépendance cloud.
 
 ---
 
-## Installation via HACS (recommandé)
+## Installation via HACS (Si vous avez Home Assistant)
 
 1. Dans Home Assistant, ouvrir **HACS → Intégrations**
 2. Cliquer sur **⋮ (menu)** → **Dépôts personnalisés**
@@ -41,7 +41,7 @@ Polling local via HTTP — aucune dépendance cloud.
 Boîtier et diffuseur imprimables en 3D — logo des Canadiens de Montréal.  
 Compatible avec le montage LED WS2812B et l'ESP32-C3 Super Mini.
 
-## 📱 Application Android
+## 📱 Application Android (Pour Connexion Wi-Fi initiale)
 
 👉 **[Télécharger l'APK](https://github.com/julz24/goal_light/releases/latest/download/canadiens_goal_light.apk)**
 
