@@ -37,15 +37,15 @@ Contrôle ta Goal Light depuis ton téléphone Android.
 5. Cliquer **Ajouter**, puis chercher **Goal Light** dans HACS et installer
 6. **Redémarrer Home Assistant**
 
+[![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=julz24&repository=goal_light&category=integration)
+
+[![Flash Firmware](https://img.shields.io/badge/Flash-ESP32--C3-blue?logo=espressif)](https://julz24.github.io/goal_light/flash.html)
+
 ## Installation manuelle
 
 1. Télécharger le fichier `goal_light.zip` depuis les [Releases](https://github.com/julz24/goal_light/releases/latest)
 2. Extraire le contenu dans `config/custom_components/goal_light/`
 3. **Redémarrer Home Assistant**
-
-[![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=julz24&repository=goal_light&category=integration)
-
-[![Flash Firmware](https://img.shields.io/badge/Flash-ESP32--C3-blue?logo=espressif)](https://julz24.github.io/goal_light/flash.html)
 
 ## 🖨️ Impression 3D
 
