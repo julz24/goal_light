@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Canadiens Goal Light — Flasher</title>
+  <script
+    type="module"
+    src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+  ></script>
+  <style>
+    :root {
+      --rouge: #AF1E2D;
+      --bleu:  #192168;
+      --blanc: #FFFFFF;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bleu);
+      color: var(--blanc);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 1.25rem;
+      padding: 2.5rem 2rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 3.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--blanc);
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      opacity: 0.65;
+      margin-bottom: 2rem;
+    }
+
+    esp-web-install-button {
+      --esp-tools-button-color:            var(--rouge);
+      --esp-tools-button-text-color:       var(--blanc);
+      --esp-tools-button-border-radius:    0.75rem;
+      font-size: 1rem;
+    }
+
+    .steps {
+      margin-top: 2rem;
+      text-align: left;
+      font-size: 0.88rem;
+      opacity: 0.8;
+      line-height: 1.7;
+    }
+
+    .steps li { margin-left: 1.25rem; }
+
+    .version {
+      margin-top: 1.75rem;
+      font-size: 0.78rem;
+      opacity: 0.45;
+    }
+
+    a { color: #7eb4ff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🚨</div>
+    <h1>Canadiens Goal Light</h1>
+    <p class="subtitle">ESP32-C3 Super Mini — Flash via navigateur</p>
+
+    <esp-web-install-button
+      manifest="./manifest.json"
+    ></esp-web-install-button>
+
+    <ol class="steps">
+      <li>Brancher l'ESP32-C3 en USB</li>
+      <li>Cliquer <strong>Install</strong> ci-dessus</li>
+      <li>Sélectionner le port COM/ttyUSB</li>
+      <li>Attendre la fin du flash (~30 sec)</li>
+      <li>Connecter au réseau Wi-Fi <strong>CanadiensGoalLight</strong></li>
+      <li>Entrer tes identifiants Wi-Fi</li>
+      <li>Ajouter l'intégration dans Home Assistant via HACS</li>
+    </ol>
+
+    <p class="version">
+      Firmware: <a href="https://github.com/julz24/goal_light/releases/latest" target="_blank">dernière version</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/julz24/goal_light" target="_blank">GitHub</a>
+    </p>
+  </div>
+</body>
+</html>
