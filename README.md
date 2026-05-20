@@ -34,6 +34,13 @@ Polling local via HTTP — aucune dépendance cloud.
 
 [![Flash Firmware](https://img.shields.io/badge/Flash-ESP32--C3-blue?logo=espressif)](https://julz24.github.io/goal_light/flash.html)
 
+## 🖨️ Impression 3D
+
+👉 **[Télécharger le modèle sur MakerWorld](https://makerworld.com/en/models/1852866-montreal-canadiens-logo-lightbox#profileId-1980887)**
+
+Boîtier et diffuseur imprimables en 3D — logo des Canadiens de Montréal.  
+Compatible avec le montage LED WS2812B et l'ESP32-C3 Super Mini.
+
 ---
 
 ## Installation manuelle
