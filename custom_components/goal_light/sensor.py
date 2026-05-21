@@ -72,7 +72,13 @@ class GoalLightStatusSensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> str | None:
         """Return the device status."""
         if self.coordinator.data:
-            return self.coordinator.data.get("status", "unknown")
+            d = self.coordinator.data
+            if d.get("flashing"):
+                return "but"
+            elif d.get("gameActive"):
+                return "en_cours"
+            else:
+                return "inactif"
         return None
 
     @property
