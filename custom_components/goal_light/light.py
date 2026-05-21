@@ -71,17 +71,14 @@ class GoalLightEntity(CoordinatorEntity, LightEntity):
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
-        """Return the RGB color."""
-        if self.coordinator.data:
-            color = self.coordinator.data.get("color")
-            if color and isinstance(color, dict):
-                return (color.get("r", 255), color.get("g", 0), color.get("b", 0))
-            elif color and isinstance(color, str):
-                # Handle hex color string e.g. "#FF0000"
-                color = color.lstrip("#")
-                if len(color) == 6:
-                    return (int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16))
-        return None
+        """Return the RGB color based on active color toggles."""
+        if not self.coordinator.data:
+            return None
+        d = self.coordinator.data
+        r = 255 if d.get("red") else 0
+        g = 255 if d.get("white") else 0
+        b = 255 if (d.get("blue") or d.get("white")) else 0
+        return (r, g, b)
 
     @property
     def effect(self) -> str | None:
@@ -104,11 +101,10 @@ class GoalLightEntity(CoordinatorEntity, LightEntity):
 
         if ATTR_RGB_COLOR in kwargs:
             r, g, b = kwargs[ATTR_RGB_COLOR]
-            hex_color = f"#{r:02x}{g:02x}{b:02x}"
-            await self.coordinator.async_set_leds(color=hex_color)
-
-        if ATTR_EFFECT in kwargs:
-            await self.coordinator.async_set_leds(effect=kwargs[ATTR_EFFECT])
+            # Map RGB to firmware color names
+            await self.coordinator.async_set_color("rouge", r > 100)
+            await self.coordinator.async_set_color("blanc", g > 100 and b > 100)
+            await self.coordinator.async_set_color("bleu", b > 100 and g < 100)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""

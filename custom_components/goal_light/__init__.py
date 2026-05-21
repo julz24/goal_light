@@ -77,37 +77,33 @@ class GoalLightCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Unexpected error: {err}") from err
 
     async def async_set_state(self, on: bool) -> None:
-        """Turn light on or off."""
-        payload = {"on": on}
+        """Turn light on or off — /set?power=1 or /set?power=0"""
+        params = {"power": "1" if on else "0"}
         async with async_timeout.timeout(10):
-            async with self.session.post(f"{self.base_url}/set", json=payload) as resp:
+            async with self.session.get(f"{self.base_url}/set", params=params) as resp:
                 resp.raise_for_status()
         await self.async_request_refresh()
 
-    async def async_set_leds(self, color: str | None = None, effect: str | None = None) -> None:
-        """Set LED color or effect."""
-        payload = {}
-        if color is not None:
-            payload["color"] = color
-        if effect is not None:
-            payload["effect"] = effect
+    async def async_set_color(self, color: str, val: bool) -> None:
+        """Set a color toggle — /set?color=rouge&val=1"""
+        params = {"color": color, "val": "1" if val else "0"}
         async with async_timeout.timeout(10):
-            async with self.session.post(f"{self.base_url}/setleds", json=payload) as resp:
+            async with self.session.get(f"{self.base_url}/set", params=params) as resp:
                 resp.raise_for_status()
         await self.async_request_refresh()
 
     async def async_set_brightness(self, brightness: int) -> None:
-        """Set LED brightness (0-255)."""
-        payload = {"brightness": brightness}
+        """Set LED brightness — /brightness?val=200"""
+        params = {"val": str(brightness)}
         async with async_timeout.timeout(10):
-            async with self.session.post(f"{self.base_url}/brightness", json=payload) as resp:
+            async with self.session.get(f"{self.base_url}/brightness", params=params) as resp:
                 resp.raise_for_status()
         await self.async_request_refresh()
 
     async def async_set_led_count(self, count: int) -> None:
-        """Set number of LEDs."""
-        payload = {"count": count}
+        """Set number of LEDs — /setleds?count=28"""
+        params = {"count": str(count)}
         async with async_timeout.timeout(10):
-            async with self.session.post(f"{self.base_url}/setleds", json=payload) as resp:
+            async with self.session.get(f"{self.base_url}/setleds", params=params) as resp:
                 resp.raise_for_status()
         await self.async_request_refresh()
