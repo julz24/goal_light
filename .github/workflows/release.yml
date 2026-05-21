@@ -25,9 +25,7 @@ jobs:
 
       - name: Create release zip
         run: |
-          cd custom_components
-          zip -r ../goal_light.zip goal_light/
-          cd ..
+          zip -r goal_light.zip custom_components/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
