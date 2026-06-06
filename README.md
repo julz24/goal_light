@@ -23,7 +23,7 @@ Polling local via HTTP — aucune dépendance cloud.
 
 ## 📱 Application Android (Pour Connexion Wi-Fi initiale)
 
-👉 **[Télécharger l'APK](https://github.com/julz24/goal_light/releases/latest/download/canadiens_goal_light.apk)**
+👉 **[Télécharger l'APK](https://github.com/julz24/goal_light/releases/latest/download/goal_light.apk)**
 
 Contrôle ta Goal Light depuis ton téléphone Android.  
 > ⚠️ Activer *Sources inconnues* dans les paramètres Android pour installer l'APK.
