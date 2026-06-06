@@ -10,7 +10,6 @@ import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -22,6 +21,7 @@ PLATFORMS: list[Platform] = [
     Platform.LIGHT,
     Platform.SENSOR,
     Platform.NUMBER,
+    Platform.SWITCH,
 ]
 
 
@@ -105,5 +105,13 @@ class GoalLightCoordinator(DataUpdateCoordinator):
         params = {"count": str(count)}
         async with async_timeout.timeout(10):
             async with self.session.get(f"{self.base_url}/setleds", params=params) as resp:
+                resp.raise_for_status()
+        await self.async_request_refresh()
+
+    async def async_set_off_season(self, val: bool) -> None:
+        """Enable/disable off-season mode — /set?offseason=1"""
+        params = {"offseason": "1" if val else "0"}
+        async with async_timeout.timeout(10):
+            async with self.session.get(f"{self.base_url}/set", params=params) as resp:
                 resp.raise_for_status()
         await self.async_request_refresh()

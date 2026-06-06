@@ -77,8 +77,9 @@ bool colorRed   = true;
 bool colorWhite = false;
 bool colorBlue  = false;
 bool saveColors = false;
+bool offSeason  = false;  // mode hors-saison — désactive le poll NHL
 int  ledCount   = LED_COUNT_DEF;
-int  brightness = 200;  // 0-255, chargé depuis NVS
+int  brightness = 200;
 
 int           lastScore      = -1;
 bool          gameActive     = false;
@@ -165,6 +166,7 @@ void handleState() {
   doc["ledCount"]   = ledCount;
   doc["saveColors"] = saveColors;
   doc["brightness"] = brightness;
+  doc["offSeason"]  = offSeason;
   String out;
   serializeJson(doc, out);
   server.send(200, "application/json", out);
@@ -201,6 +203,14 @@ void handleSet() {
     prefs.end();
     if (saveColors) _saveColorPrefs();
     addLog("Sauvegarde couleurs: %s", saveColors ? "ON" : "OFF");
+  }
+  if (server.hasArg("offseason")) {
+    offSeason = (server.arg("offseason") == "1");
+    prefs.begin("goallight", false);
+    prefs.putBool("offSeason", offSeason);
+    prefs.end();
+    if (offSeason) { lastScore = -1; gameActive = false; }
+    addLog("Mode hors-saison: %s", offSeason ? "ON" : "OFF");
   }
   server.send(200, "text/plain", "OK");
 }
@@ -284,6 +294,7 @@ void setup() {
   prefs.begin("goallight", true);
   ledCount   = prefs.getInt("ledCount",    LED_COUNT_DEF);
   brightness = prefs.getInt("brightness",  200);
+  offSeason  = prefs.getBool("offSeason",  false);
   saveColors = prefs.getBool("saveColors", false);
   if (saveColors) {
     colorRed   = prefs.getBool("colorRed",   true);
@@ -387,8 +398,8 @@ void loop() {
     return;
   }
 
-  // Poll NHL toutes les POLL_INTERVAL ms
-  if (millis() - lastPoll >= POLL_INTERVAL || lastPoll == 0) {
+  // Poll NHL toutes les POLL_INTERVAL ms (désactivé en mode hors-saison)
+  if (!offSeason && (millis() - lastPoll >= POLL_INTERVAL || lastPoll == 0)) {
     lastPoll = millis();
     checkScore();
   }
