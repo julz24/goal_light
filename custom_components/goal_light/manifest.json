@@ -1,7 +1,7 @@
 {
   "domain": "goal_light",
   "name": "Goal Light",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "config_flow": true,
   "documentation": "https://github.com/julz24/goal_light",
   "issue_tracker": "https://github.com/julz24/goal_light/issues",
