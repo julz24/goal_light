@@ -156,7 +156,6 @@ int      logHead  = 0;   // prochain index à écrire (circulaire)
 int      logCount = 0;   // nb de lignes remplies
 
 void addLog(const char* fmt, ...) {
-  char tmp[LOG_LINE_LEN];
   // Horodatage
   time_t now = time(nullptr);
   struct tm ti;
