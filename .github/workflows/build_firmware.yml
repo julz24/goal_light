@@ -46,6 +46,17 @@ jobs:
           cd firmware
           pio run -e esp32-c3-supermini
 
+      - name: Vérifier que le .bin entre dans la partition OTA
+        run: |
+          # min_spiffs.csv : app0/app1 = 0x1E0000 octets chacune
+          MAX=$((0x1E0000))
+          SIZE=$(stat -c %s firmware/.pio/build/esp32-c3-supermini/firmware.bin)
+          echo "firmware.bin : $SIZE octets / $MAX ($((SIZE * 100 / MAX)) %)"
+          if [ "$SIZE" -gt "$MAX" ]; then
+            echo "::error::Le firmware ($SIZE octets) dépasse la partition OTA ($MAX octets)"
+            exit 1
+          fi
+
       - name: Préparer les fichiers de release
         run: |
           cp firmware/.pio/build/esp32-c3-supermini/firmware.bin \
