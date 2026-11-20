@@ -21,7 +21,6 @@ PLATFORMS: list[Platform] = [
     Platform.LIGHT,
     Platform.SENSOR,
     Platform.NUMBER,
-    Platform.SWITCH,
 ]
 
 
@@ -108,9 +107,9 @@ class GoalLightCoordinator(DataUpdateCoordinator):
                 resp.raise_for_status()
         await self.async_request_refresh()
 
-    async def async_set_off_season(self, val: bool) -> None:
-        """Enable/disable off-season mode — /set?offseason=1"""
-        params = {"offseason": "1" if val else "0"}
+    async def async_set_rgb(self, r: int, g: int, b: int) -> None:
+        """Set the idle color — /set?rgb=RRGGBB"""
+        params = {"rgb": f"{r:02X}{g:02X}{b:02X}"}
         async with async_timeout.timeout(10):
             async with self.session.get(f"{self.base_url}/set", params=params) as resp:
                 resp.raise_for_status()

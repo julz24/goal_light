@@ -112,11 +112,12 @@ Preferences       prefs;
 
 // ─── ETAT GLOBAL ───────────────────────────────────────────────────────────
 bool lightOn    = true;
-bool colorRed   = true;
-bool colorWhite = false;
-bool colorBlue  = false;
+// Couleur entre les buts : UNE seule couleur RGB (0xRRGGBB)
+#define COLOR_ROUGE 0xFF0000
+#define COLOR_BLANC 0xFFFFFF
+#define COLOR_BLEU  0x0000FF
+uint32_t idleColor = COLOR_ROUGE;
 bool saveColors = false;
-bool offSeason  = false;  // mode hors-saison — désactive le poll NHL
 int  ledCount   = LED_COUNT_DEF;
 int  brightness = 200;
 
@@ -194,16 +195,17 @@ void blinkAll(uint8_t r, uint8_t g, uint8_t b, int times, int delayMs) {
   }
 }
 
-// Calcule et applique la couleur idle selon les toggles actifs
+// Applique la couleur entre les buts (le flash de but reste toujours rouge)
 void applyIdleColor() {
   if (!lightOn) { setAll(0, 0, 0); return; }
-  int r = 0, g = 0, b = 0;
-  if (colorRed)   r = 255;
-  if (colorWhite) { r = min(255, r + 255); g = 255; b = 255; }
-  if (colorBlue)  b = min(255, b + 255);
-  // Aucune couleur cochee -> blanc par defaut
-  if (!colorRed && !colorWhite && !colorBlue) { r = 255; g = 255; b = 255; }
-  setAll((uint8_t)r, (uint8_t)g, (uint8_t)b);
+  setAll((idleColor >> 16) & 0xFF, (idleColor >> 8) & 0xFF, idleColor & 0xFF);
+}
+
+// "#RRGGBB" pour /state
+String colorHex() {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "#%06lX", (unsigned long)(idleColor & 0xFFFFFF));
+  return String(buf);
 }
 
 // ─── ROUTES WEB ────────────────────────────────────────────────────────────
@@ -214,9 +216,11 @@ void handleRoot() {
 void handleState() {
   JsonDocument doc;
   doc["on"]         = lightOn;
-  doc["red"]        = colorRed;
-  doc["white"]      = colorWhite;
-  doc["blue"]       = colorBlue;
+  doc["color"]      = colorHex();               // couleur unique "#RRGGBB"
+  // Compatibilité (ancienne app / intégration HA) : vrai si la couleur = ce preset
+  doc["red"]        = (idleColor == COLOR_ROUGE);
+  doc["white"]      = (idleColor == COLOR_BLANC);
+  doc["blue"]       = (idleColor == COLOR_BLEU);
   doc["gameActive"] = gameActive;
   doc["flashing"]   = goalFlashing;
   doc["score"]      = lastScore;
@@ -224,7 +228,6 @@ void handleState() {
   doc["ledCount"]   = ledCount;
   doc["saveColors"] = saveColors;
   doc["brightness"] = brightness;
-  doc["offSeason"]  = offSeason;
   doc["firmware"]   = FW_VERSION;
   doc["fwLatest"]   = fwLatest;
   doc["fwUpdate"]   = fwUpdateAvailable;
@@ -237,9 +240,7 @@ void handleState() {
 
 void _saveColorPrefs() {
   prefs.begin("goallight", false);
-  prefs.putBool("colorRed",   colorRed);
-  prefs.putBool("colorWhite", colorWhite);
-  prefs.putBool("colorBlue",  colorBlue);
+  prefs.putUInt("idleColor",  idleColor);
   prefs.putBool("lightOn",    lightOn);
   prefs.end();
 }
@@ -250,12 +251,23 @@ void handleSet() {
     if (!goalFlashing) applyIdleColor();
     if (saveColors) _saveColorPrefs();
   }
-  if (server.hasArg("color") && server.hasArg("val")) {
-    String c   = server.arg("color");
-    bool   val = (server.arg("val") == "1");
-    if (c == "rouge") colorRed   = val;
-    if (c == "blanc") colorWhite = val;
-    if (c == "bleu")  colorBlue  = val;
+  // Couleur libre : /set?rgb=RRGGBB
+  if (server.hasArg("rgb")) {
+    String h = server.arg("rgb");
+    if (h.startsWith("#")) h = h.substring(1);
+    if (h.length() == 6) {
+      idleColor = strtoul(h.c_str(), nullptr, 16) & 0xFFFFFF;
+      if (!goalFlashing) applyIdleColor();
+      if (saveColors) _saveColorPrefs();
+      addLog("Couleur: %s", colorHex().c_str());
+    }
+  }
+  // Presets (compatibilité) : /set?color=rouge|blanc|bleu&val=1 — une seule à la fois
+  if (server.hasArg("color") && server.arg("val") != "0") {
+    String c = server.arg("color");
+    if      (c == "rouge") idleColor = COLOR_ROUGE;
+    else if (c == "blanc") idleColor = COLOR_BLANC;
+    else if (c == "bleu")  idleColor = COLOR_BLEU;
     if (!goalFlashing) applyIdleColor();
     if (saveColors) _saveColorPrefs();
   }
@@ -266,15 +278,6 @@ void handleSet() {
     prefs.end();
     if (saveColors) _saveColorPrefs();
     addLog("Sauvegarde couleurs: %s", saveColors ? "ON" : "OFF");
-  }
-  if (server.hasArg("offseason")) {
-    offSeason = (server.arg("offseason") == "1");
-    prefs.begin("goallight", false);
-    prefs.putBool("offSeason", offSeason);
-    prefs.end();
-    if (offSeason) { lastScore = -1; gameActive = false; }
-    else           { lastPoll = 0; }  // reprise : poll immédiat au prochain loop
-    addLog("Mode hors-saison: %s", offSeason ? "ON" : "OFF");
   }
   if (server.hasArg("autoupdate")) {
     autoUpdate = (server.arg("autoupdate") == "1");
@@ -473,13 +476,17 @@ void setup() {
   prefs.begin("goallight", true);
   ledCount   = prefs.getInt("ledCount",    LED_COUNT_DEF);
   brightness = prefs.getInt("brightness",  200);
-  offSeason  = prefs.getBool("offSeason",  false);
   autoUpdate = prefs.getBool("autoUpdate", false);
   saveColors = prefs.getBool("saveColors", false);
   if (saveColors) {
-    colorRed   = prefs.getBool("colorRed",   true);
-    colorWhite = prefs.getBool("colorWhite", false);
-    colorBlue  = prefs.getBool("colorBlue",  false);
+    if (prefs.isKey("idleColor")) {
+      idleColor = prefs.getUInt("idleColor", COLOR_ROUGE);
+    } else {
+      // Migration depuis les anciennes cases rouge/blanc/bleu
+      if      (prefs.getBool("colorWhite", false)) idleColor = COLOR_BLANC;
+      else if (prefs.getBool("colorBlue",  false)) idleColor = COLOR_BLEU;
+      else                                         idleColor = COLOR_ROUGE;
+    }
     lightOn    = prefs.getBool("lightOn",    true);
   }
   prefs.end();
@@ -589,7 +596,7 @@ void loop() {
   }
 
   // Vérification GitHub 1x/jour — jamais pendant un match
-  bool gameBusy = !offSeason && (gameActive || pollInterval == POLL_LIVE);
+  bool gameBusy = gameActive || pollInterval == POLL_LIVE;
   if (!gameBusy && (long)(millis() - fwNextCheck) >= 0) {
     bool ok = checkFirmware();
     fwNextCheck = millis() + (ok ? FW_CHECK_EVERY : FW_CHECK_RETRY);
@@ -601,8 +608,8 @@ void loop() {
     }
   }
 
-  // Poll NHL — intervalle dynamique (désactivé en mode hors-saison)
-  if (!offSeason && (millis() - lastPoll >= pollInterval || lastPoll == 0)) {
+  // Poll NHL — toujours actif, intervalle adaptatif (60 min sans match → 15 s en match)
+  if (millis() - lastPoll >= pollInterval || lastPoll == 0) {
     lastPoll = millis();
     checkScore();
   }

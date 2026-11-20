@@ -71,14 +71,26 @@ class GoalLightEntity(CoordinatorEntity, LightEntity):
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
-        """Return the RGB color based on active color toggles."""
+        """Return the idle color (one RGB color, '#RRGGBB' from the device)."""
         if not self.coordinator.data:
             return None
         d = self.coordinator.data
-        r = 255 if d.get("red") else 0
-        g = 255 if d.get("white") else 0
-        b = 255 if (d.get("blue") or d.get("white")) else 0
-        return (r, g, b)
+        hex_color = str(d.get("color", "")).lstrip("#")
+        if len(hex_color) == 6:
+            try:
+                return (
+                    int(hex_color[0:2], 16),
+                    int(hex_color[2:4], 16),
+                    int(hex_color[4:6], 16),
+                )
+            except ValueError:
+                pass
+        # Ancien firmware (cases rouge / blanc / bleu)
+        if d.get("white"):
+            return (255, 255, 255)
+        if d.get("blue"):
+            return (0, 0, 255)
+        return (255, 0, 0)
 
     @property
     def effect(self) -> str | None:
@@ -101,10 +113,7 @@ class GoalLightEntity(CoordinatorEntity, LightEntity):
 
         if ATTR_RGB_COLOR in kwargs:
             r, g, b = kwargs[ATTR_RGB_COLOR]
-            # Map RGB to firmware color names
-            await self.coordinator.async_set_color("rouge", r > 100)
-            await self.coordinator.async_set_color("blanc", g > 100 and b > 100)
-            await self.coordinator.async_set_color("bleu", b > 100 and g < 100)
+            await self.coordinator.async_set_rgb(r, g, b)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off."""

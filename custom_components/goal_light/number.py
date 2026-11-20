@@ -52,7 +52,7 @@ class GoalLightLedCountNumber(CoordinatorEntity, NumberEntity):
     def native_value(self) -> float | None:
         """Return the current LED count."""
         if self.coordinator.data:
-            return self.coordinator.data.get("led_count")
+            return self.coordinator.data.get("ledCount")
         return None
 
     async def async_set_native_value(self, value: float) -> None:

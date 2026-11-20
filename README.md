@@ -18,7 +18,6 @@ Polling local via HTTP — aucune dépendance cloud.
 | `sensor.goal_light_status` | Sensor | Statut de l'appareil |
 | `number.goal_light_led_count` | Number | Nombre de LEDs (1–1000) |
 | `number.goal_light_brightness` | Number | Luminosité (0–255) |
-| `switch.goal_light_mode_hors_saison` | Switch | Mode hors-saison (désactive le poll NHL) |
 
 ---
 
@@ -101,6 +100,7 @@ GitHub Actions compile le firmware et attache `canadiens_goal_light_c3.bin` + `v
 | `/fwcheck` | Vérifie la dernière release (JSON : `current`, `latest`, `available`) |
 | `/fwupdate` | Installe la dernière release |
 | `/set?autoupdate=1` | Active l'installation automatique |
+| `/set?rgb=RRGGBB` | Couleur entre les buts (une seule à la fois ; le but reste rouge) |
 
 ---
 
