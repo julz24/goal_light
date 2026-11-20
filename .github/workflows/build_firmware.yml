@@ -15,6 +15,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Version depuis le tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="dev"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version : $VERSION"
+
+      - name: Injecter la version dans le firmware
+        run: |
+          echo '#pragma once' > firmware/src/version.h
+          echo '#define FW_VERSION "${{ steps.version.outputs.VERSION }}"' >> firmware/src/version.h
+          cat firmware/src/version.h
+
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
@@ -29,21 +46,28 @@ jobs:
           cd firmware
           pio run -e esp32-c3-supermini
 
-      - name: Rename .bin
+      - name: Préparer les fichiers de release
         run: |
           cp firmware/.pio/build/esp32-c3-supermini/firmware.bin \
              canadiens_goal_light_c3.bin
+          # Lu par le C3 pour savoir s'il y a une nouvelle version
+          echo '{"version":"${{ steps.version.outputs.VERSION }}"}' > version.json
+          ls -l canadiens_goal_light_c3.bin version.json
 
       - name: Upload artifact (pour test sans release)
         uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: canadiens_goal_light_c3.bin
+          path: |
+            canadiens_goal_light_c3.bin
+            version.json
 
-      - name: Attach .bin to GitHub Release
+      - name: Attach .bin + version.json to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: canadiens_goal_light_c3.bin
+          files: |
+            canadiens_goal_light_c3.bin
+            version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

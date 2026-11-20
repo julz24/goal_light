@@ -14,9 +14,17 @@
  *   - Flash Size      : 4MB
  *   - CPU Frequency   : 160MHz
  *
- * Structure du projet (dossier canadiens_goal_light_c3/) :
- *   canadiens_goal_light_c3.ino   <- ce fichier
- *   html_page.h                   <- Web UI HTML
+ * Structure du projet (repo github.com/julz24/goal_light) :
+ *   firmware/src/main.cpp     <- ce fichier
+ *   firmware/src/html_page.h  <- Web UI HTML
+ *   firmware/src/version.h    <- généré par GitHub Actions (pas dans le repo)
+ *
+ * Mise à jour par GitHub :
+ *   1. git tag v1.2.0 && git push --tags
+ *   2. GitHub Actions compile et publie canadiens_goal_light_c3.bin + version.json
+ *   3. Le C3 vérifie 1x/jour (ou bouton "Vérifier") et s'installe
+ *      (bouton "Installer", ou automatiquement si l'option est activée)
+ *   Build local (Arduino IDE / PlatformIO) = version "dev" : jamais de MAJ auto.
  *
  * Reset WiFi : maintiens GPIO9 (bouton BOOT) 3 sec apres le boot
  *   -> LEDs orange 3x -> efface credentials -> redémarre en hotspot
@@ -33,16 +41,44 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include <ElegantOTA.h>
+#include <HTTPUpdate.h>
 #include <time.h>
 #include "html_page.h"
+
+// Version : injectée par GitHub Actions dans version.h (à partir du tag v*)
+#if __has_include("version.h")
+  #include "version.h"
+#endif
+#ifndef FW_VERSION
+  #define FW_VERSION "dev"
+#endif
+
+// Délai de lecture du flux TLS : 15 s.
+// Core ESP32 3.x (Arduino IDE) = millisecondes, core 2.x (PlatformIO / GitHub Actions) = secondes
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  #define READ_TIMEOUT 15000
+#else
+  #define READ_TIMEOUT 15
+#endif
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 #define LED_PIN        4
 #define LED_COUNT_MAX  300     // Maximum absolu supporté
 #define LED_COUNT_DEF  28      // Valeur par défaut
-#define POLL_INTERVAL  30000   // ms entre chaque poll NHL
+#define POLL_IDLE      3600000UL  // 60 min — aucun match aujourd'hui / match terminé
+#define POLL_SCHEDULED  300000UL  // 5 min  — match à l'horaire, pas commencé (FUT)
+#define POLL_LIVE        15000UL  // 15 sec — avant-match / en cours (PRE, LIVE, CRIT)
+#define POLL_RETRY       30000UL  // 30 sec — après une erreur réseau/JSON
 #define GOAL_DURATION  45000   // ms de flash rouge au but
 #define RESET_PIN      9       // GPIO9 = bouton BOOT du C3 Super Mini
+
+// Mise à jour par GitHub Releases
+#define GH_REPO          "julz24/goal_light"
+#define FW_BIN_URL       "https://github.com/" GH_REPO "/releases/latest/download/canadiens_goal_light_c3.bin"
+#define FW_VER_URL       "https://github.com/" GH_REPO "/releases/latest/download/version.json"
+#define FW_CHECK_EVERY   86400000UL  // vérification 1x par 24 h
+#define FW_CHECK_RETRY    3600000UL  // 1 h après un échec de vérification
+#define FW_FIRST_CHECK      60000UL  // 1re vérification 1 min après le boot
 
 const int  HABS_TEAM_ID = 8;
 const char AP_NAME[]    = "CanadiensGoalLight";
@@ -59,10 +95,13 @@ void handleSetLeds();
 void handleSetBrightness();
 void handleLogs();
 void handleReboot();
+void handleFwCheck();
+void handleFwUpdate();
+bool checkFirmware();
+void doFirmwareUpdate();
 void onApStarted(WiFiManager* wm);
 void checkScore();
-String getTodayGameId();
-void fetchGameScore(String gameId);
+void fetchGameScore(const String& gameId);
 // ───────────────────────────────────────────────────────────────────────────
 
 Adafruit_NeoPixel strip(LED_COUNT_MAX, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -86,8 +125,28 @@ bool          gameActive     = false;
 bool          goalFlashing   = false;
 unsigned long goalStartTime  = 0;
 unsigned long lastPoll       = 0;
+unsigned long pollInterval   = POLL_LIVE;  // ajusté dynamiquement selon l'horaire
+
+void addLog(const char* fmt, ...);  // défini plus bas
+
+// Change l'intervalle de poll et logue seulement s'il change
+void setPollInterval(unsigned long ms) {
+  if (ms != pollInterval) {
+    pollInterval = ms;
+    if (ms >= 60000UL) addLog("Prochain poll dans %lu min", ms / 60000UL);
+    else               addLog("Prochain poll dans %lu sec", ms / 1000UL);
+  }
+}
 unsigned long resetHoldStart = 0;
 bool          resetHolding   = false;
+
+// ─── ÉTAT MISE À JOUR ──────────────────────────────────────────────────────
+String        fwLatest          = "";     // dernière version publiée sur GitHub
+bool          fwUpdateAvailable = false;
+bool          fwUpdateRequested = false;  // demandé par le Web UI / l'app
+bool          fwUpdating        = false;
+bool          autoUpdate        = false;  // NVS — installer automatiquement
+unsigned long fwNextCheck       = FW_FIRST_CHECK;
 
 // ─── BUFFER DE LOGS ────────────────────────────────────────────────────────
 #define LOG_MAX_LINES  60
@@ -167,6 +226,11 @@ void handleState() {
   doc["saveColors"] = saveColors;
   doc["brightness"] = brightness;
   doc["offSeason"]  = offSeason;
+  doc["firmware"]   = FW_VERSION;
+  doc["fwLatest"]   = fwLatest;
+  doc["fwUpdate"]   = fwUpdateAvailable;
+  doc["fwUpdating"] = fwUpdating;
+  doc["autoUpdate"] = autoUpdate;
   String out;
   serializeJson(doc, out);
   server.send(200, "application/json", out);
@@ -210,7 +274,15 @@ void handleSet() {
     prefs.putBool("offSeason", offSeason);
     prefs.end();
     if (offSeason) { lastScore = -1; gameActive = false; }
+    else           { lastPoll = 0; }  // reprise : poll immédiat au prochain loop
     addLog("Mode hors-saison: %s", offSeason ? "ON" : "OFF");
+  }
+  if (server.hasArg("autoupdate")) {
+    autoUpdate = (server.arg("autoupdate") == "1");
+    prefs.begin("goallight", false);
+    prefs.putBool("autoUpdate", autoUpdate);
+    prefs.end();
+    addLog("MAJ automatique: %s", autoUpdate ? "ON" : "OFF");
   }
   server.send(200, "text/plain", "OK");
 }
@@ -275,6 +347,114 @@ void handleReboot() {
   ESP.restart();
 }
 
+// ─── MISE À JOUR PAR GITHUB ────────────────────────────────────────────────
+// Compare deux versions "1.2.3" (un "v" devant est ignoré, "dev" = 0.0.0)
+bool versionNewer(const String& latest, const char* current) {
+  int a1 = 0, a2 = 0, a3 = 0, b1 = 0, b2 = 0, b3 = 0;
+  const char* a = latest.c_str();
+  if (*a == 'v') a++;
+  if (*current == 'v') current++;
+  sscanf(a,       "%d.%d.%d", &a1, &a2, &a3);
+  sscanf(current, "%d.%d.%d", &b1, &b2, &b3);
+  if (a1 != b1) return a1 > b1;
+  if (a2 != b2) return a2 > b2;
+  return a3 > b3;
+}
+
+// Lit version.json de la dernière release (quelques octets)
+bool checkFirmware() {
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);  // GitHub redirige vers son CDN
+  http.setTimeout(15000);
+  http.begin(client, FW_VER_URL);
+  int code = http.GET();
+  if (code != 200) {
+    addLog("MAJ: verification echouee (HTTP %d)", code);
+    http.end();
+    return false;
+  }
+  String body = http.getString();
+  http.end();
+
+  JsonDocument doc;
+  if (deserializeJson(doc, body)) {
+    addLog("MAJ: version.json invalide");
+    return false;
+  }
+  String v = doc["version"] | "";
+  if (v.startsWith("v")) v = v.substring(1);
+  if (v == "") {
+    addLog("MAJ: version.json sans version");
+    return false;
+  }
+  fwLatest          = v;
+  fwUpdateAvailable = versionNewer(v, FW_VERSION);
+  addLog("MAJ: installee %s, publiee %s%s", FW_VERSION, v.c_str(),
+         fwUpdateAvailable ? " -> disponible" : " (a jour)");
+  return true;
+}
+
+// Télécharge et flashe le .bin de la dernière release, puis redémarre
+void doFirmwareUpdate() {
+  fwUpdating = true;
+  addLog("MAJ: telechargement de la version %s...", fwLatest.c_str());
+  setAll(0, 0, 0);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  httpUpdate.rebootOnUpdate(false);           // on logue avant de redémarrer
+  httpUpdate.onProgress([](int cur, int total) {
+    // Barre de progression bleue sur les LEDs
+    static int lastLit = -1;
+    if (total <= 0) return;
+    int lit = (int)((long)ledCount * cur / total);
+    if (lit == lastLit) return;
+    lastLit = lit;
+    for (int i = 0; i < ledCount; i++)
+      strip.setPixelColor(i, i < lit ? strip.Color(0, 0, 255) : 0);
+    strip.show();
+  });
+
+  t_httpUpdate_return r = httpUpdate.update(client, FW_BIN_URL);
+
+  if (r == HTTP_UPDATE_OK) {
+    addLog("MAJ: OK — redemarrage");
+    blinkAll(0, 255, 0, 3, 200);              // vert 3x = succès
+    delay(300);
+    ESP.restart();
+  }
+  addLog("MAJ: echec (%d) %s", httpUpdate.getLastError(),
+         httpUpdate.getLastErrorString().c_str());
+  blinkAll(255, 0, 0, 3, 200);                // rouge 3x = échec
+  fwUpdating = false;
+  applyIdleColor();                           // l'ancien firmware continue
+}
+
+void handleFwCheck() {
+  bool ok = checkFirmware();
+  fwNextCheck = millis() + FW_CHECK_EVERY;
+  JsonDocument doc;
+  doc["ok"]        = ok;
+  doc["current"]   = FW_VERSION;
+  doc["latest"]    = fwLatest;
+  doc["available"] = fwUpdateAvailable;
+  String out;
+  serializeJson(doc, out);
+  server.send(ok ? 200 : 502, "application/json", out);
+}
+
+void handleFwUpdate() {
+  if (!fwUpdateAvailable) {
+    server.send(409, "text/plain", "Deja a jour (verifier d'abord)");
+    return;
+  }
+  fwUpdateRequested = true;                    // exécuté dans loop(), pas ici
+  server.send(200, "text/plain", "Mise a jour lancee");
+}
+
 // ─── CALLBACK WiFiManager ──────────────────────────────────────────────────
 void onApStarted(WiFiManager* wm) {
   addLog("Mode config AP — SSID: CanadiensGoalLight");
@@ -295,6 +475,7 @@ void setup() {
   ledCount   = prefs.getInt("ledCount",    LED_COUNT_DEF);
   brightness = prefs.getInt("brightness",  200);
   offSeason  = prefs.getBool("offSeason",  false);
+  autoUpdate = prefs.getBool("autoUpdate", false);
   saveColors = prefs.getBool("saveColors", false);
   if (saveColors) {
     colorRed   = prefs.getBool("colorRed",   true);
@@ -352,6 +533,8 @@ void setup() {
   server.on("/brightness",handleSetBrightness);
   server.on("/logs",      handleLogs);
   server.on("/reboot",    handleReboot);
+  server.on("/fwcheck",   handleFwCheck);
+  server.on("/fwupdate",  handleFwUpdate);
   server.onNotFound([]() {
     server.sendHeader("Location", "/", true);
     server.send(302, "text/plain", "");
@@ -361,6 +544,7 @@ void setup() {
   server.begin();
   addLog("Web UI pret: http://%s", WiFi.localIP().toString().c_str());
   addLog("OTA pret: http://%s/update", WiFi.localIP().toString().c_str());
+  addLog("Firmware: %s", FW_VERSION);
 
   applyIdleColor();
 }
@@ -398,14 +582,60 @@ void loop() {
     return;
   }
 
-  // Poll NHL toutes les POLL_INTERVAL ms (désactivé en mode hors-saison)
-  if (!offSeason && (millis() - lastPoll >= POLL_INTERVAL || lastPoll == 0)) {
+  // Mise à jour demandée par le Web UI / l'app
+  if (fwUpdateRequested) {
+    fwUpdateRequested = false;
+    doFirmwareUpdate();          // redémarre si succès
+    return;
+  }
+
+  // Vérification GitHub 1x/jour — jamais pendant un match
+  bool gameBusy = !offSeason && (gameActive || pollInterval == POLL_LIVE);
+  if (!gameBusy && (long)(millis() - fwNextCheck) >= 0) {
+    bool ok = checkFirmware();
+    fwNextCheck = millis() + (ok ? FW_CHECK_EVERY : FW_CHECK_RETRY);
+    // Auto-install : seulement une version officielle (pas un build "dev" local)
+    if (ok && fwUpdateAvailable && autoUpdate && strcmp(FW_VERSION, "dev") != 0) {
+      addLog("MAJ automatique...");
+      doFirmwareUpdate();
+      return;
+    }
+  }
+
+  // Poll NHL — intervalle dynamique (désactivé en mode hors-saison)
+  if (!offSeason && (millis() - lastPoll >= pollInterval || lastPoll == 0)) {
     lastPoll = millis();
     checkScore();
   }
 
   delay(50);
 }
+
+// ─── MATCH EN CACHE ────────────────────────────────────────────────────────
+// Une fois le match du jour trouvé, on ne relit plus l'horaire de la semaine
+// (gros JSON) : pendant le match on poll seulement /landing.
+String curGameId   = "";
+String curGameDate = "";
+
+#define SCHED_ERROR 0   // erreur réseau / JSON → on garde l'état actuel
+#define SCHED_NONE  1   // aucun match (ou match terminé)
+#define SCHED_FOUND 2   // match du jour trouvé
+
+// Date de "la journée de match" : avant 4h AM on reste sur la veille
+// (match du soir qui déborde minuit)
+void gameDate(char* out) {
+  time_t now = time(nullptr);
+  struct tm ti;
+  localtime_r(&now, &ti);
+  if (ti.tm_hour < 4) {
+    now -= 86400;
+    localtime_r(&now, &ti);
+  }
+  strftime(out, 11, "%Y-%m-%d", &ti);
+}
+
+int readSchedule(const char* dateStr, String& gameIdOut);
+void fetchGameScore(const String& gameId);
 
 // ─── CHECK SCORE ───────────────────────────────────────────────────────────
 void checkScore() {
@@ -414,88 +644,142 @@ void checkScore() {
     WiFi.reconnect();
     delay(5000);
     if (WiFi.status() != WL_CONNECTED) ESP.restart();
+    setPollInterval(POLL_RETRY);
     return;
   }
-  String gameId = getTodayGameId();
-  if (gameId == "") {
+
+  char dateStr[11];
+  gameDate(dateStr);
+
+  // Match déjà en cache et en cours → directement le score, pas d'horaire
+  if (curGameId != "" && curGameDate == dateStr && pollInterval == POLL_LIVE) {
+    fetchGameScore(curGameId);
+    return;
+  }
+
+  String id;
+  int r = readSchedule(dateStr, id);
+
+  if (r == SCHED_ERROR) {
+    // Erreur réseau/JSON : on NE touche PAS à lastScore ni gameActive.
+    // Sinon un but compté pendant le trou serait absorbé par la réinitialisation.
+    return;
+  }
+
+  if (r == SCHED_NONE) {
     addLog("Pas de game aujourd'hui.");
+    curGameId  = "";
     lastScore  = -1;
     gameActive = false;
     return;
   }
-  fetchGameScore(gameId);
+
+  // SCHED_FOUND
+  curGameId   = id;
+  curGameDate = dateStr;
+  if (pollInterval == POLL_LIVE) fetchGameScore(id);  // PRE / LIVE / CRIT
 }
 
-// ─── GET TODAY'S GAME ID ───────────────────────────────────────────────────
-String getTodayGameId() {
-  time_t now = time(nullptr);
-  struct tm ti;
-  localtime_r(&now, &ti);
-  char dateStr[11];
-  strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", &ti);
-
+// ─── LECTURE DE L'HORAIRE ──────────────────────────────────────────────────
+int readSchedule(const char* dateStr, String& gameIdOut) {
   String url = String("https://api-web.nhle.com/v1/schedule/") + dateStr;
   addLog("Poll schedule: %s", dateStr);
 
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
+  http.useHTTP10(true);          // pas de chunked → lecture en streaming
+  http.setTimeout(15000);
   http.begin(client, url);
   int code = http.GET();
   if (code != 200) {
     addLog("HTTP schedule erreur: %d", code);
     http.end();
-    return "";
+    setPollInterval(POLL_RETRY);
+    return SCHED_ERROR;
   }
+  client.setTimeout(READ_TIMEOUT); // délai de LECTURE du flux — défaut ~1 s
 
-  String payload = http.getString();
-  http.end();
+  JsonDocument filter;
+  filter["gameWeek"][0]["date"] = true;
+  JsonObject fg = filter["gameWeek"][0]["games"][0].to<JsonObject>();
+  fg["id"]             = true;
+  fg["gameState"]      = true;
+  fg["homeTeam"]["id"] = true;
+  fg["awayTeam"]["id"] = true;
 
   JsonDocument doc;
-  if (deserializeJson(doc, payload)) {
-    addLog("JSON erreur schedule");
-    return "";
+  DeserializationError err = deserializeJson(doc, http.getStream(),
+                                             DeserializationOption::Filter(filter));
+  http.end();
+  if (err) {
+    addLog("JSON erreur schedule: %s", err.c_str());
+    setPollInterval(POLL_RETRY);
+    return SCHED_ERROR;
   }
 
   for (JsonObject day : doc["gameWeek"].as<JsonArray>()) {
+    if (strcmp(day["date"] | "", dateStr) != 0) continue;   // aujourd'hui seulement
     for (JsonObject game : day["games"].as<JsonArray>()) {
       int homeId = game["homeTeam"]["id"].as<int>();
       int awayId = game["awayTeam"]["id"].as<int>();
-      if (homeId == HABS_TEAM_ID || awayId == HABS_TEAM_ID) {
-        String id    = game["id"].as<String>();
-        String state = game["gameState"].as<String>();
-        addLog("Game trouvee: %s  etat: %s", id.c_str(), state.c_str());
-        if (state == "LIVE" || state == "CRIT" || state == "PRE" || state == "FUT") {
-          gameActive = (state == "LIVE" || state == "CRIT");
-          return id;
-        }
+      if (homeId != HABS_TEAM_ID && awayId != HABS_TEAM_ID) continue;
+
+      String id    = game["id"].as<String>();
+      String state = game["gameState"].as<String>();
+      addLog("Game trouvee: %s  etat: %s", id.c_str(), state.c_str());
+
+      if (state == "LIVE" || state == "CRIT" || state == "PRE") {
+        gameActive = (state == "LIVE" || state == "CRIT");
+        setPollInterval(POLL_LIVE);        // 15 sec
+        gameIdOut = id;
+        return SCHED_FOUND;
       }
+      if (state == "FUT") {
+        gameActive = false;
+        setPollInterval(POLL_SCHEDULED);   // 5 min jusqu'au PRE
+        gameIdOut = id;
+        return SCHED_FOUND;
+      }
+      setPollInterval(POLL_IDLE);          // FINAL / OFF → match terminé
+      return SCHED_NONE;
     }
   }
-  return "";
+  setPollInterval(POLL_IDLE);              // aucun match aujourd'hui
+  return SCHED_NONE;
 }
 
 // ─── FETCH GAME SCORE ──────────────────────────────────────────────────────
-void fetchGameScore(String gameId) {
+void fetchGameScore(const String& gameId) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
+  http.useHTTP10(true);
+  http.setTimeout(15000);
   String url = "https://api-web.nhle.com/v1/gamecenter/" + gameId + "/landing";
   http.begin(client, url);
   int code = http.GET();
   if (code != 200) {
     addLog("HTTP score erreur: %d", code);
     http.end();
-    return;
+    return;                      // état conservé, réessai au prochain poll
   }
+  client.setTimeout(READ_TIMEOUT);
 
-  String payload = http.getString();
-  http.end();
+  JsonDocument filter;
+  filter["gameState"]         = true;
+  filter["homeTeam"]["id"]    = true;
+  filter["homeTeam"]["score"] = true;
+  filter["awayTeam"]["id"]    = true;
+  filter["awayTeam"]["score"] = true;
 
   JsonDocument doc;
-  if (deserializeJson(doc, payload)) {
-    addLog("JSON erreur score");
-    return;
+  DeserializationError err = deserializeJson(doc, http.getStream(),
+                                             DeserializationOption::Filter(filter));
+  http.end();
+  if (err) {
+    addLog("JSON erreur score: %s", err.c_str());
+    return;                      // état conservé, réessai au prochain poll
   }
 
   int homeId    = doc["homeTeam"]["id"].as<int>();
@@ -504,6 +788,7 @@ void fetchGameScore(String gameId) {
                     : doc["awayTeam"]["score"].as<int>();
 
   String gameState = doc["gameState"].as<String>();
+  bool   finished  = (gameState == "FINAL" || gameState == "OFF");
   gameActive = (gameState == "LIVE" || gameState == "CRIT");
 
   addLog("Score Canadiens: %d  (%s)", habsScore, gameState.c_str());
@@ -511,15 +796,21 @@ void fetchGameScore(String gameId) {
   if (lastScore == -1) {
     lastScore = habsScore;
     addLog("Score initialise a %d.", habsScore);
-    return;
-  }
-
-  if (gameActive && habsScore > lastScore) {
+  } else if (habsScore > lastScore) {
+    // Pas de condition gameActive : un but en prolongation peut arriver
+    // dans le même poll où l'état passe à FINAL
     addLog("*** BUT! Score: %d -> %d ***", lastScore, habsScore);
     lastScore     = habsScore;
     goalFlashing  = true;
     goalStartTime = millis();
   } else {
     lastScore = habsScore;
+  }
+
+  if (finished) {
+    addLog("Match termine.");
+    curGameId = "";
+    lastScore = -1;
+    setPollInterval(POLL_IDLE);
   }
 }
