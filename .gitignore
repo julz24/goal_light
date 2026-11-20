@@ -4,3 +4,7 @@ __pycache__/
 .DS_Store
 *.zip
 .env
+
+# Firmware
+firmware/.pio/
+firmware/src/version.h

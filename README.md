@@ -74,6 +74,36 @@ Compatible avec le montage LED WS2812B et l'ESP32-C3 Super Mini.
 
 --- 
 
+## 🔄 Mise à jour du firmware (sans USB)
+
+Le Goal Light se met à jour directement depuis les [Releases](https://github.com/julz24/goal_light/releases) de ce repo.
+
+**Publier une nouvelle version :**
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+GitHub Actions compile le firmware et attache `canadiens_goal_light_c3.bin` + `version.json` à la release.
+
+**Sur l'appareil :**
+
+- Vérification automatique 1x par jour (jamais pendant un match), ou bouton **Vérifier** dans le Web UI / l'app
+- Bouton **Installer** → les LEDs affichent une barre de progression bleue, puis l'appareil redémarre (vert 3x = succès, rouge 3x = échec, l'ancien firmware continue)
+- Option **Installer automatiquement** pour installer dès qu'une version est publiée (hors match)
+- Un firmware compilé localement (Arduino IDE / PlatformIO) affiche la version `dev` et ne s'installe jamais tout seul par-dessus
+
+> ⚠️ La première installation de cette fonction doit se faire par USB ou par `http://<ip>/update`. Ensuite, tout passe par GitHub.
+
+| Endpoint | Description |
+|----------|-------------|
+| `/fwcheck` | Vérifie la dernière release (JSON : `current`, `latest`, `available`) |
+| `/fwupdate` | Installe la dernière release |
+| `/set?autoupdate=1` | Active l'installation automatique |
+
+---
+
 ## Format JSON attendu (`/state`)
 
 L'intégration interroge l'endpoint `/state` toutes les 10 secondes.  
