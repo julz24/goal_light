@@ -186,7 +186,7 @@ const char HTML_PAGE[] PROGMEM =
 "fetch('/state').then(function(r){return r.json();}).then(function(d){"
 "document.getElementById('togPwr').checked=d.on;"
 "document.getElementById('pwrLbl').textContent=d.on?'ON':'OFF';"
-"document.getElementById('ipLbl').textContent='IP: '+d.ip;"
+"document.getElementById('ipLbl').textContent='IP: '+d.ip+(d.host?'  \u00B7  '+d.host:'');"
 "document.getElementById('ledInput').value=d.ledCount||28;"
 "document.getElementById('togSave').checked=d.saveColors||false;"
 "document.getElementById('togAuto').checked=d.autoUpdate||false;"

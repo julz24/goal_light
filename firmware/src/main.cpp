@@ -38,7 +38,7 @@
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
 #include <WebServer.h>
-#include <DNSServer.h>
+#include <ESPmDNS.h>
 #include <Preferences.h>
 #include <ElegantOTA.h>
 #include <HTTPUpdate.h>
@@ -80,6 +80,10 @@
 #define FW_CHECK_RETRY    3600000UL  // 1 h après un échec de vérification
 #define FW_FIRST_CHECK      60000UL  // 1re vérification 1 min après le boot
 
+// Nom sur le réseau : http://lumiere-but.local (mDNS) + nom affiché dans le routeur
+#define HOSTNAME         "lumiere-but"
+#define POST_CONFIG_MS   90000UL     // hotspot gardé ouvert après la config WiFi
+
 const int  HABS_TEAM_ID = 8;
 const char AP_NAME[]    = "CanadiensGoalLight";
 // ───────────────────────────────────────────────────────────────────────────
@@ -106,7 +110,6 @@ void fetchGameScore(const String& gameId);
 
 Adafruit_NeoPixel strip(LED_COUNT_MAX, LED_PIN, NEO_GRB + NEO_KHZ800);
 WebServer         server(80);
-DNSServer         dnsServer;
 WiFiManager       wifiManager;
 Preferences       prefs;
 
@@ -225,6 +228,7 @@ void handleState() {
   doc["flashing"]   = goalFlashing;
   doc["score"]      = lastScore;
   doc["ip"]         = WiFi.localIP().toString();
+  doc["host"]       = HOSTNAME ".local";
   doc["ledCount"]   = ledCount;
   doc["saveColors"] = saveColors;
   doc["brightness"] = brightness;
@@ -457,11 +461,56 @@ void handleFwUpdate() {
   server.send(200, "text/plain", "Mise a jour lancee");
 }
 
-// ─── CALLBACK WiFiManager ──────────────────────────────────────────────────
+// ─── CALLBACKS WiFiManager ─────────────────────────────────────────────────
+bool wifiJustConfigured = false;   // vrai si le WiFi vient d'être configuré par le portail
+
 void onApStarted(WiFiManager* wm) {
   addLog("Mode config AP — SSID: CanadiensGoalLight");
   blinkAll(0, 0, 255, 5, 400);
 }
+
+// Appelé par WiFiManager après un enregistrement réussi ET une connexion réussie
+void onWifiSaved() {
+  wifiJustConfigured = true;
+}
+
+// Route ajoutée au serveur du portail : la page « Saving Credentials »
+// l'interroge pour afficher la nouvelle adresse dès que le C3 est connecté
+void onPortalServerReady() {
+  wifiManager.server->on("/devip", []() {
+    JsonDocument doc;
+    bool ok = (WiFi.status() == WL_CONNECTED);
+    doc["ip"]   = ok ? WiFi.localIP().toString() : "";
+    doc["host"] = HOSTNAME ".local";
+    String out;
+    serializeJson(doc, out);
+    wifiManager.server->sendHeader("Cache-Control", "no-store");
+    wifiManager.server->send(200, "application/json", out);
+  });
+}
+
+// Injecté dans les pages du portail : sur la page d'enregistrement, interroge /devip
+// et remplace le message par la nouvelle adresse une fois connecté
+const char PORTAL_HEAD[] PROGMEM =
+"<script>"
+"if(location.pathname.indexOf('wifisave')>=0){"
+"var gl=setInterval(function(){"
+"fetch('/devip',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){"
+"if(!d.ip)return;clearInterval(gl);"
+"var u='http://'+d.ip;"
+"document.body.innerHTML="
+"'<div style=\"font-family:sans-serif;text-align:center;padding:30px 20px\">'"
+"+'<div style=\"font-size:44px\">&#9989;</div>'"
+"+'<h2>Connect&eacute; au WiFi!</h2>'"
+"+'<p>Adresse de l\\'appareil :</p>'"
+"+'<p style=\"font-size:22px;font-weight:bold\"><a href=\"'+u+'\">'+u+'</a></p>'"
+"+'<p>ou <a href=\"http://'+d.host+'\">http://'+d.host+'</a></p>'"
+"+'<p style=\"color:#666;margin-top:24px\">Reconnecte ton t&eacute;l&eacute;phone &agrave; ton WiFi,<br>puis touche l\\'adresse.</p>'"
+"+'</div>';"
+"}).catch(function(){});"
+"},2000);"
+"}"
+"</script>";
 
 // ─── SETUP ─────────────────────────────────────────────────────────────────
 void setup() {
@@ -510,6 +559,11 @@ void setup() {
   wifiManager.setAPCallback(onApStarted);
   wifiManager.setConfigPortalTimeout(180);
   wifiManager.setConnectTimeout(20);
+  wifiManager.setHostname(HOSTNAME);
+  wifiManager.setSaveConfigCallback(onWifiSaved);
+  wifiManager.setWebServerCallback(onPortalServerReady);
+  wifiManager.setCustomHeadElement(PORTAL_HEAD);
+  wifiManager.setDisableConfigPortal(false);   // garde le hotspot ouvert après la connexion
 
   if (!wifiManager.autoConnect(AP_NAME)) {
     addLog("Timeout WiFiManager — reboot...");
@@ -520,6 +574,29 @@ void setup() {
 
   addLog("WiFi connecte! IP: %s", WiFi.localIP().toString().c_str());
   blinkAll(255, 255, 255, 2, 200);
+
+  // WiFi tout juste configuré : le hotspot reste ouvert un moment pour que la
+  // page de config affiche la nouvelle adresse, puis on le ferme
+  if (wifiJustConfigured) {
+    addLog("Hotspot garde ouvert pour afficher l'adresse...");
+    unsigned long t0 = millis(), lastClient = millis();
+    while (millis() - t0 < POST_CONFIG_MS) {
+      if (wifiManager.dnsServer) wifiManager.dnsServer->processNextRequest();
+      if (wifiManager.server)    wifiManager.server->handleClient();
+      if (WiFi.softAPgetStationNum() > 0) lastClient = millis();
+      else if (millis() - lastClient > 10000) break;   // plus personne depuis 10 s
+      delay(2);
+    }
+    wifiManager.setConfigPortalBlocking(false);  // sinon stopConfigPortal() ne fait rien
+    wifiManager.stopConfigPortal();
+    addLog("Hotspot ferme");
+  }
+
+  // Nom sur le réseau : http://lumiere-but.local
+  if (MDNS.begin(HOSTNAME)) {
+    MDNS.addService("http", "tcp", 80);
+    addLog("mDNS: http://%s.local", HOSTNAME);
+  }
 
   // NTP — HNE (UTC-5) / HAE (UTC-4) passage auto 2e dim. mars / 1er dim. nov.
   configTzTime("EST5EDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
@@ -545,7 +622,6 @@ void setup() {
     server.sendHeader("Location", "/", true);
     server.send(302, "text/plain", "");
   });
-  dnsServer.start(53, "*", WiFi.localIP());
   ElegantOTA.begin(&server);
   server.begin();
   addLog("Web UI pret: http://%s", WiFi.localIP().toString().c_str());
@@ -558,7 +634,6 @@ void setup() {
 // ─── LOOP ──────────────────────────────────────────────────────────────────
 void loop() {
   server.handleClient();
-  dnsServer.processNextRequest();
   ElegantOTA.loop();
 
   // Reset WiFi via bouton BOOT (maintien 3 sec)
