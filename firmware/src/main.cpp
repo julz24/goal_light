@@ -99,6 +99,7 @@ void handleSetLeds();
 void handleSetBrightness();
 void handleLogs();
 void handleReboot();
+void handleWifiReset();
 void handleFwCheck();
 void handleFwUpdate();
 bool checkFirmware();
@@ -350,6 +351,18 @@ void handleReboot() {
   server.send(200, "text/plain", "Reboot en cours...");
   addLog("Reboot demande via Web UI");
   delay(500);
+  ESP.restart();
+}
+
+// Efface le WiFi enregistré et redémarre → le hotspot CanadiensGoalLight revient
+// (même effet que maintenir le bouton BOOT 3 s)
+void handleWifiReset() {
+  server.send(200, "text/plain", "WiFi efface, redemarrage en mode configuration...");
+  addLog("Changement de WiFi demande — effacement des identifiants");
+  delay(500);
+  blinkAll(255, 80, 0, 3, 150);   // orange 3x, comme le bouton BOOT
+  wifiManager.resetSettings();
+  delay(300);
   ESP.restart();
 }
 
@@ -616,6 +629,7 @@ void setup() {
   server.on("/brightness",handleSetBrightness);
   server.on("/logs",      handleLogs);
   server.on("/reboot",    handleReboot);
+  server.on("/wifireset", handleWifiReset);
   server.on("/fwcheck",   handleFwCheck);
   server.on("/fwupdate",  handleFwUpdate);
   server.onNotFound([]() {

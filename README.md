@@ -101,6 +101,7 @@ GitHub Actions compile le firmware et attache `canadiens_goal_light_c3.bin` + `v
 | `/fwupdate` | Installe la dernière release |
 | `/set?autoupdate=1` | Active l'installation automatique |
 | `/set?rgb=RRGGBB` | Couleur entre les buts (une seule à la fois ; le but reste rouge) |
+| `/wifireset` | Oublie le WiFi et redémarre en hotspot de configuration (`CanadiensGoalLight`) |
 
 ---
 
