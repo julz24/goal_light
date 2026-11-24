@@ -102,6 +102,7 @@ GitHub Actions compile le firmware et attache `canadiens_goal_light_c3.bin` + `v
 | `/set?autoupdate=1` | Active l'installation automatique |
 | `/set?rgb=RRGGBB` | Couleur entre les buts (une seule à la fois ; le but reste rouge) |
 | `/wifireset` | Oublie le WiFi et redémarre en hotspot de configuration (`CanadiensGoalLight`) |
+| `/goals` | Historique des buts gardé par l'appareil (40 derniers, conservé au redémarrage) : `{seq, goals:[{n, t, score, oppScore, opp, home}]}` — `goalSeq` dans `/state` change à chaque but |
 
 ---
 

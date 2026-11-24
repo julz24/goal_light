@@ -94,6 +94,7 @@ void blinkAll(uint8_t r, uint8_t g, uint8_t b, int times, int delayMs);
 void applyIdleColor();
 void handleRoot();
 void handleState();
+void handleGoals();
 void handleSet();
 void handleSetLeds();
 void handleSetBrightness();
@@ -133,6 +134,55 @@ unsigned long lastPoll       = 0;
 unsigned long pollInterval   = POLL_LIVE;  // ajusté dynamiquement selon l'horaire
 
 void addLog(const char* fmt, ...);  // défini plus bas
+
+// ─── HISTORIQUE DES BUTS ───────────────────────────────────────────────────
+// Gardé par le C3 (NVS) : l'app le récupère par /goals même si elle était
+// fermée pendant le match.
+#define GOAL_LOG_MAX 40
+struct GoalRec {
+  uint32_t n;          // numéro séquentiel (ne revient jamais en arrière)
+  uint32_t t;          // heure du but (epoch UTC, 0 si NTP absent)
+  uint8_t  score;      // score des Canadiens après le but
+  uint8_t  oppScore;   // score de l'adversaire à ce moment
+  char     opp[4];     // abréviation de l'adversaire ("TOR")
+  uint8_t  home;       // 1 = Canadiens à domicile
+  uint8_t  _pad;
+};
+GoalRec  goalLog[GOAL_LOG_MAX];
+int      goalLogCount = 0;     // entrées valides (les plus récentes à la fin)
+uint32_t goalSeq      = 0;     // numéro du dernier but enregistré
+
+void loadGoalLog() {
+  prefs.begin("goallog", true);
+  goalSeq = prefs.getUInt("seq", 0);
+  size_t len = prefs.getBytesLength("log");
+  if (len > 0 && len <= sizeof(goalLog) && len % sizeof(GoalRec) == 0) {
+    prefs.getBytes("log", goalLog, len);
+    goalLogCount = len / sizeof(GoalRec);
+  }
+  prefs.end();
+}
+
+void recordGoal(int score, int oppScore, const char* opp, bool home) {
+  if (goalLogCount == GOAL_LOG_MAX) {           // plein → on retire le plus vieux
+    memmove(goalLog, goalLog + 1, sizeof(GoalRec) * (GOAL_LOG_MAX - 1));
+    goalLogCount--;
+  }
+  GoalRec& g = goalLog[goalLogCount++];
+  memset(&g, 0, sizeof(g));
+  g.n        = ++goalSeq;
+  time_t now = time(nullptr);
+  g.t        = (now > 1600000000) ? (uint32_t)now : 0;
+  g.score    = (uint8_t)constrain(score, 0, 255);
+  g.oppScore = (uint8_t)constrain(oppScore, 0, 255);
+  strncpy(g.opp, opp, sizeof(g.opp) - 1);
+  g.home     = home ? 1 : 0;
+
+  prefs.begin("goallog", false);
+  prefs.putUInt("seq", goalSeq);
+  prefs.putBytes("log", goalLog, sizeof(GoalRec) * goalLogCount);
+  prefs.end();
+}
 
 // Change l'intervalle de poll et logue seulement s'il change
 void setPollInterval(unsigned long ms) {
@@ -238,6 +288,26 @@ void handleState() {
   doc["fwUpdate"]   = fwUpdateAvailable;
   doc["fwUpdating"] = fwUpdating;
   doc["autoUpdate"] = autoUpdate;
+  doc["goalSeq"]    = goalSeq;                  // change à chaque but → l'app relit /goals
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
+// /goals : historique des buts gardé par le C3 (du plus vieux au plus récent)
+void handleGoals() {
+  JsonDocument doc;
+  doc["seq"] = goalSeq;
+  JsonArray arr = doc["goals"].to<JsonArray>();
+  for (int i = 0; i < goalLogCount; i++) {
+    JsonObject o = arr.add<JsonObject>();
+    o["n"]        = goalLog[i].n;
+    o["t"]        = goalLog[i].t;
+    o["score"]    = goalLog[i].score;
+    o["oppScore"] = goalLog[i].oppScore;
+    o["opp"]      = (const char*)goalLog[i].opp;
+    o["home"]     = goalLog[i].home == 1;
+  }
   String out;
   serializeJson(doc, out);
   server.send(200, "application/json", out);
@@ -552,6 +622,7 @@ void setup() {
     lightOn    = prefs.getBool("lightOn",    true);
   }
   prefs.end();
+  loadGoalLog();
   strip.updateLength(ledCount);
   strip.setBrightness(brightness);
   setAll(0, 0, 0);
@@ -624,6 +695,7 @@ void setup() {
   // Web server
   server.on("/",          handleRoot);
   server.on("/state",     handleState);
+  server.on("/goals",     handleGoals);
   server.on("/set",       handleSet);
   server.on("/setleds",   handleSetLeds);
   server.on("/brightness",handleSetBrightness);
@@ -863,10 +935,12 @@ void fetchGameScore(const String& gameId) {
 
   JsonDocument filter;
   filter["gameState"]         = true;
-  filter["homeTeam"]["id"]    = true;
-  filter["homeTeam"]["score"] = true;
-  filter["awayTeam"]["id"]    = true;
-  filter["awayTeam"]["score"] = true;
+  filter["homeTeam"]["id"]     = true;
+  filter["homeTeam"]["score"]  = true;
+  filter["homeTeam"]["abbrev"] = true;
+  filter["awayTeam"]["id"]     = true;
+  filter["awayTeam"]["score"]  = true;
+  filter["awayTeam"]["abbrev"] = true;
 
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, http.getStream(),
@@ -877,10 +951,13 @@ void fetchGameScore(const String& gameId) {
     return;                      // état conservé, réessai au prochain poll
   }
 
-  int homeId    = doc["homeTeam"]["id"].as<int>();
-  int habsScore = (homeId == HABS_TEAM_ID)
-                    ? doc["homeTeam"]["score"].as<int>()
-                    : doc["awayTeam"]["score"].as<int>();
+  int  homeId    = doc["homeTeam"]["id"].as<int>();
+  bool habsHome  = (homeId == HABS_TEAM_ID);
+  JsonObject habsT = doc[habsHome ? "homeTeam" : "awayTeam"].as<JsonObject>();
+  JsonObject oppT  = doc[habsHome ? "awayTeam" : "homeTeam"].as<JsonObject>();
+  int  habsScore = habsT["score"].as<int>();
+  int  oppScore  = oppT["score"].as<int>();
+  const char* oppAbbr = oppT["abbrev"] | "";
 
   String gameState = doc["gameState"].as<String>();
   bool   finished  = (gameState == "FINAL" || gameState == "OFF");
@@ -898,6 +975,8 @@ void fetchGameScore(const String& gameId) {
     lastScore     = habsScore;
     goalFlashing  = true;
     goalStartTime = millis();
+    setAll(255, 0, 0);                 // flash immédiat, avant l'écriture NVS
+    recordGoal(habsScore, oppScore, oppAbbr, habsHome);
   } else {
     lastScore = habsScore;
   }
