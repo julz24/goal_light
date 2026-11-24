@@ -28,13 +28,13 @@ Polling local via HTTP — aucune dépendance cloud.
 Contrôle ta Goal Light depuis ton téléphone Android.  
 > ⚠️ Activer *Sources inconnues* dans les paramètres Android pour installer l'APK.
 
-## Installation via HACS (Si vous avez Home Assistant)
+## Installation via Marketplace (Si vous avez Home Assistant)
 
-1. Dans Home Assistant, ouvrir **HACS → Intégrations**
+1. Dans Home Assistant, ouvrir **Markeplace → Intégrations**
 2. Cliquer sur **⋮ (menu)** → **Dépôts personnalisés**
 3. Ajouter l'URL : `https://github.com/julz24/goal_light`
 4. Catégorie : **Intégration**
-5. Cliquer **Ajouter**, puis chercher **Goal Light** dans HACS et installer
+5. Cliquer **Ajouter**, puis chercher **Goal Light** dans Marketplace et installer
 6. **Redémarrer Home Assistant**
 
 [![Ouvrir dans HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=julz24&repository=goal_light&category=integration)
